@@ -2,8 +2,11 @@
 include('./MailChimp.php');
 use \DrewM\MailChimp\MailChimp;
 # ini_set('error_reporting', E_ALL);
-$mcapi = getenv('MAILCHIMPAPI');
-$mclist = getenv('MAILCHIMPLIST');
+$Loader = new josegonzalez\Dotenv\Loader('.env');
+$Loader->parse();
+$Loader->toEnv();
+$mcapi = $_ENV['MAILCHIMPAPI'];
+$mclist = $_ENV['MAILCHIMPLIST'];
 
 /* This script allows you to receive data from forms to your email */
 
