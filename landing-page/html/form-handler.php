@@ -1,7 +1,9 @@
 <?php
 include('./MailChimp.php');
 use \DrewM\MailChimp\MailChimp;
-ini_set('error_reporting', E_ALL);
+# ini_set('error_reporting', E_ALL);
+$mcapi = getenv('MAILCHIMPAPI');
+$mclist = getenv('MAILCHIMPLIST');
 
 /* This script allows you to receive data from forms to your email */
 
@@ -28,10 +30,10 @@ $telegramChatId = '';
 $viberToken = '';
 // MailChimp integration: Your API key 
 //(leave string empty if you don't want to use MailChimp integration or check how to get your API key here: https://designmodo.com/startup/documentation/#mailchimp)
-$MailChimpAPIkey = 'b43e8afc677bfe8267367cf2224570e8-us17';
+$MailChimpAPIkey = $mcapi;
 // MailChimp integration: ID of list where contact will be added to
 //(leave string empty if you don't want to use MailChimp integration or check how to get ID of list here: https://designmodo.com/startup/documentation/#mailchimp)
-$MailChimpListID = '7248c9204b';
+$MailChimpListID = $mclist;
 // SendInBlue integration: Your API key 
 //(leave string empty if you don't want to use SendInBlue integration or check how to get your API key here: https://designmodo.com/startup/documentation/#sendinblue)
 $sendInBlueAPIkey = '';
