@@ -18,8 +18,8 @@
   It is strictly not-for-commercial use, but there are options to license the software for commercial use.
 </p>
 <p align="center">
-  <a href="https://github.com/Evenflowjs/Evenflow/blob/master/LICENSE">
-    <img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="Evenflow is released under the MIT license." />
+  <a href="https://github.com/james-see/evenflow/blob/master/LICENSE">
+    <img src="https://img.shields.io/badge/license-AGPL--3.0-blue.svg" alt="Evenflow is released under the AGPL-3.0 license." />
   </a>
   <a href="https://circleci.com/gh/Evenflowjs/Evenflow">
     <img src="https://circleci.com/gh/Evenflowjs/Evenflow.svg?style=shield" alt="Current CircleCI build status." />
@@ -166,7 +166,9 @@ We are currently only accepting bug fixes for Evenflow v1. No new features will 
 
 ## :memo: License
 
-Licensed under the [MIT License](./LICENSE).
+Licensed under the [GNU Affero General Public License v3.0](./LICENSE).
+
+For commercial use, a separate license is available. Contact james@bellwetherlabs.com for inquiries.
 
 ## 💜 Thanks
 
