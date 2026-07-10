@@ -14,6 +14,14 @@ let opfs = false;
 let initError: string | null = null;
 
 const SCHEMA_STATEMENTS = [
+  `CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT NOT NULL UNIQUE,
+    password_hash TEXT NOT NULL,
+    role TEXT NOT NULL DEFAULT 'editor',
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now'))
+  ),
   `CREATE TABLE IF NOT EXISTS content_types (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL UNIQUE,
@@ -75,6 +83,18 @@ async function init() {
   // Run schema migrations
   for (const stmt of SCHEMA_STATEMENTS) {
     db.exec(stmt);
+  }
+
+  // Seed default user if empty
+  const usersCheck: any[] = [];
+  db.exec({ sql: "SELECT COUNT(*) as c FROM users", resultRows: usersCheck, rowMode: 'object' });
+  if (usersCheck.length > 0 && usersCheck[0].c === 0) {
+    // Using a very simple placeholder for now - in production use Argon2/bcrypt
+    const defaultPass = 'admin123'; 
+    db.exec({
+      sql: "INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)",
+      bind: ['admin', defaultPass, 'admin']
+    });
   }
 
   // Seed default content type if empty
