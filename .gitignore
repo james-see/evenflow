@@ -1,3 +1,21 @@
-/landing-page/vendor/*
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Astro
+.astro/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Env
 .env
+.env.local
+
+# Editor
+.vscode/
+.idea/
 
