@@ -3,6 +3,13 @@ import Layout from '../layouts/Layout.astro';
 import Login from '../components/Login.svelte';
 ---
 
+<script>
+  const token = typeof localStorage !== 'undefined' ? localStorage.getItem('evenflow_token') : null;
+  if (token) {
+    window.location.replace('/admin');
+  }
+</script>
+
 <Layout>
   <Login client:only="svelte" />
 </Layout>

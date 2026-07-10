@@ -20,8 +20,15 @@ export async function dev(options: Record<string, string>): Promise<void> {
     stdio: 'inherit',
   });
 
-  child.on('close', (code) => {
-    process.exit(code ?? 0);
+  return new Promise((resolve, reject) => {
+    child.on('close', (code) => {
+      if (code === 0) {
+        resolve();
+      } else {
+        reject(new Error(`Dev server exited with code ${code}`));
+      }
+    });
+    child.on('error', reject);
   });
 }
 

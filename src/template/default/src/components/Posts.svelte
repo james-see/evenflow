@@ -1,15 +1,16 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { initDB, query } from '../lib/db';
+  import MediaImage from './MediaImage.svelte';
 
   let ready = $state(false);
-  let posts = $state<{ id: number; title: string; slug: string; body: string; status: string; created_at: string }[]>([]);
+  let posts = $state<{ id: number; title: string; slug: string; body: string; data: string; status: string; created_at: string }[]>([]);
 
   onMount(async () => {
     try {
       await initDB();
       posts = await query(
-        `SELECT c.id, c.title, c.slug, c.body, c.status, c.created_at
+        `SELECT c.id, c.title, c.slug, c.body, c.data, c.status, c.created_at
          FROM content c JOIN content_types ct ON c.type_id = ct.id
          WHERE ct.slug = 'posts'
          ORDER BY c.created_at DESC`,
@@ -22,6 +23,15 @@
 
   function formatDate(d: string): string {
     return new Date(d + 'Z').toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+  }
+
+  function getImages(data: string): number[] {
+    try {
+      const parsed = JSON.parse(data || '{}');
+      return Array.isArray(parsed.images) ? parsed.images : [];
+    } catch {
+      return [];
+    }
   }
 </script>
 
@@ -46,6 +56,13 @@
             </div>
             <p class="mt-1 text-xs text-slate-400">{formatDate(post.created_at)}</p>
             <div class="mt-3 prose prose-slate max-w-none whitespace-pre-wrap text-slate-700">{post.body}</div>
+            {#if getImages(post.data).length > 0}
+              <div class="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3">
+                {#each getImages(post.data) as mediaId}
+                  <MediaImage {mediaId} />
+                {/each}
+              </div>
+            {/if}
           </article>
         {/each}
       </div>
