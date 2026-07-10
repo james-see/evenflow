@@ -1,110 +1,102 @@
 /// <reference types="@sqlite.org/sqlite-wasm" />
-import type { Sqlite3Static, Database } from '@sqlite.org/sqlite-wasm';
 
 /**
  * Evenflow CMS — SQLite WASM database with OPFS persistence.
  *
- * The entire CMS database lives in the browser. Content is stored in SQLite
- * compiled to WebAssembly, persisted to the Origin Private File System (OPFS).
- * No server. No external API. The site self-hosts its own backend.
+ * SQLite runs inside a Web Worker (required for OPFS).
+ * The main thread sends SQL queries to the worker and gets results back.
+ * This enables true persistence — the database survives across page navigations.
  */
 
-let sqlite3: Sqlite3Static | null = null;
-let db: Database | null = null;
-const DB_FILE = 'evenflow-cms.sqlite3';
+type QueryResult = {
+  rows: Record<string, unknown>[];
+  insertId?: number;
+};
 
-export async function initDB(): Promise<Database> {
-  if (db) return db;
+type WorkerMsg = {
+  id: number;
+  type: 'init' | 'query' | 'queryOne' | 'run' | 'export' | 'exec';
+  sql?: string;
+  params?: unknown[];
+};
 
-  const { default: sqlite3Init } = await import('@sqlite.org/sqlite-wasm');
-  sqlite3 = await sqlite3Init();
+type WorkerResp = {
+  id: number;
+  result?: QueryResult;
+  data?: Uint8Array;
+  error?: string;
+  ready?: boolean;
+  opfs?: boolean;
+  initError?: string | null;
+};
 
-  const dbName = 'opfs' in sqlite3 ? `opfs:${DB_FILE}` : ':memory:';
-  db = new sqlite3.oo1.DB(dbName, 'c');
-  db.exec('PRAGMA foreign_keys=ON;');
+let worker: Worker | null = null;
+let ready = false;
+let opfs = false;
+let pending = new Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void }>();
+let counter = 0;
 
-  migrate(db);
-  return db;
+export async function initDB(): Promise<void> {
+  if (ready) return;
+
+  // Use Vite's worker import — Vite bundles the worker + sqlite-wasm together
+  worker = new Worker(new URL('./db-worker.ts', import.meta.url), { type: 'module' });
+
+  worker.onmessage = (e: MessageEvent<WorkerResp>) => {
+    const resp = e.data;
+    const p = pending.get(resp.id);
+    if (!p) return;
+    pending.delete(resp.id);
+    if (resp.error) {
+      p.reject(new Error(resp.error));
+    } else if (resp.ready) {
+   opfs = resp.opfs ?? false;
+   ready = true;
+   if (resp.initError) {
+     console.error('[Evenflow] OPFS init error:', resp.initError);
+   }
+   p.resolve(true);
+    } else {
+      p.resolve(resp);
+    }
+  };
+
+  worker.onerror = (e) => {
+    console.error('Evenflow DB worker error:', e);
+  };
+
+  await send('init');
 }
 
-export function getDB(): Database {
-  if (!db) throw new Error('DB not initialized. Call initDB() first.');
-  return db;
+function send(type: WorkerMsg['type'], sql?: string, params?: unknown[]): Promise<WorkerResp> {
+  return new Promise((resolve, reject) => {
+    const id = ++counter;
+    pending.set(id, { resolve: resolve as (v: unknown) => void, reject });
+    worker!.postMessage({ id, type, sql, params } satisfies WorkerMsg);
+  });
 }
 
 export function isOPFSAvailable(): boolean {
-  return sqlite3 !== null && 'opfs' in sqlite3;
+  return opfs;
+}
+
+export async function query<T = Record<string, unknown>>(sql: string, params?: unknown[]): Promise<T[]> {
+  const resp = await send('query', sql, params);
+  return (resp.result?.rows ?? []) as T[];
+}
+
+export async function queryOne<T = Record<string, unknown>>(sql: string, params?: unknown[]): Promise<T | null> {
+  const resp = await send('queryOne', sql, params);
+  const rows = resp.result?.rows ?? [];
+  return rows.length > 0 ? (rows[0] as T) : null;
+}
+
+export async function run(sql: string, params?: unknown[]): Promise<number> {
+  const resp = await send('run', sql, params);
+  return resp.result?.insertId ?? 0;
 }
 
 export async function exportDB(): Promise<Uint8Array> {
-  return sqlite3!.capi.sqlite3_js_db_export(getDB());
-}
-
-export function query<T = Record<string, unknown>>(sql: string, params?: unknown[]): T[] {
-  const results: T[] = [];
-  getDB().exec({ sql, bind: params, resultRows: results as Record<string, unknown>[], rowMode: 'object' });
-  return results;
-}
-
-export function queryOne<T = Record<string, unknown>>(sql: string, params?: unknown[]): T | null {
-  const rows = query<T>(sql, params);
-  return rows.length > 0 ? rows[0] : null;
-}
-
-export function run(sql: string, params?: unknown[]): number {
-  const database = getDB();
-  database.exec({ sql, bind: params, resultRows: [], rowMode: 'object' });
-  return sqlite3!.capi.sqlite3_last_insert_rowid(database);
-}
-
-// --- Schema ---
-
-const SCHEMA = `
-CREATE TABLE IF NOT EXISTS content_types (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL UNIQUE,
-    slug TEXT NOT NULL UNIQUE,
-    fields TEXT NOT NULL DEFAULT '[]',
-    created_at TEXT DEFAULT (datetime('now'))
-);
-
-CREATE TABLE IF NOT EXISTS content (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    type_id INTEGER NOT NULL REFERENCES content_types(id) ON DELETE CASCADE,
-    title TEXT NOT NULL,
-    slug TEXT NOT NULL,
-    body TEXT DEFAULT '',
-    data TEXT DEFAULT '{}',
-    status TEXT DEFAULT 'draft',
-    created_at TEXT DEFAULT (datetime('now')),
-    updated_at TEXT DEFAULT (datetime('now')),
-    UNIQUE(type_id, slug)
-);
-
-CREATE TABLE IF NOT EXISTS settings (
-    key TEXT PRIMARY KEY,
-    value TEXT
-);
-
-CREATE INDEX IF NOT EXISTS idx_content_type ON content(type_id);
-`;
-
-function migrate(database: Database): void {
-  database.exec(SCHEMA);
-  // Seed default content type if empty
-  const count = queryOne<{ c: number }>('SELECT COUNT(*) as c FROM content_types');
-  if (count && count.c === 0) {
-    run(
-      "INSERT INTO content_types (name, slug, fields) VALUES (?, ?, ?)",
-      ['Post', 'posts', JSON.stringify([
-        { name: 'title', type: 'text', required: true },
-        { name: 'body', type: 'markdown', required: true },
-      ])],
-    );
-  }
-  // Seed default settings
-  const siteName = queryOne<{ value: string }>("SELECT value FROM settings WHERE key = 'site_name'");
-  if (!siteName) {
-    run("INSERT INTO settings (key, value) VALUES ('site_name', 'My Evenflow Site')");
-  }
+  const resp = await send('export');
+  return resp.data ?? new Uint8Array();
 }

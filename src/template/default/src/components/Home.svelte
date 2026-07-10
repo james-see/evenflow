@@ -9,9 +9,9 @@
   onMount(async () => {
     try {
       await initDB();
-      const name = queryOne<{ value: string }>("SELECT value FROM settings WHERE key = 'site_name'");
+      const name = await queryOne<{ value: string }>("SELECT value FROM settings WHERE key = 'site_name'");
       if (name) siteName = name.value;
-      latestPosts = query(
+      latestPosts = await query(
         `SELECT c.title, c.slug, c.body, c.created_at
          FROM content c JOIN content_types ct ON c.type_id = ct.id
          WHERE ct.slug = 'posts' AND c.status = 'published'
@@ -19,7 +19,6 @@
       );
       ready = true;
     } catch {
-      // If DB fails, still show the page
       ready = true;
     }
   });

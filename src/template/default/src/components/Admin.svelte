@@ -10,39 +10,50 @@
   let error = $state<string | null>(null);
   let opfs = $state(false);
 
-  // Navigation
   let view = $state<'content' | 'types' | 'settings'>('content');
   let selectedTypeId = $state<number | null>(null);
   let editingContent = $state<Content | null>(null);
   let creatingContent = $state(false);
-  let newContentTitle = $state('');
-  let newContentBody = $state('');
+  let newTitle = $state('');
+  let newBody = $state('');
 
-  // Data
   let contentTypes = $state<ContentType[]>([]);
   let contentList = $state<Content[]>([]);
-  let settings = $state<Setting[]>([]);
+  let settingsList = $state<Setting[]>([]);
+  let typeCounts = $state<Record<number, number>>({});
+  let statusMsg = $state('');
 
   onMount(async () => {
     try {
       await initDB();
       opfs = isOPFSAvailable();
-      refresh();
+      await refresh();
       ready = true;
     } catch (e) {
       error = e instanceof Error ? e.message : String(e);
+      console.error('Evenflow DB init error:', e);
     }
   });
 
-  function refresh() {
-    contentTypes = query<ContentType>('SELECT * FROM content_types ORDER BY name');
-    if (selectedTypeId) {
-      contentList = query<Content>('SELECT * FROM content WHERE type_id = ? ORDER BY created_at DESC', [selectedTypeId]);
-    } else if (contentTypes.length > 0) {
+  async function refresh() {
+    contentTypes = await query<ContentType>('SELECT * FROM content_types ORDER BY name');
+    if (contentTypes.length > 0 && selectedTypeId === null) {
       selectedTypeId = contentTypes[0].id;
-      contentList = query<Content>('SELECT * FROM content WHERE type_id = ? ORDER BY created_at DESC', [selectedTypeId]);
     }
-    settings = query<Setting>('SELECT * FROM settings ORDER BY key');
+    if (selectedTypeId !== null) {
+      contentList = await query<Content>(
+        'SELECT * FROM content WHERE type_id = ? ORDER BY created_at DESC',
+        [selectedTypeId],
+      );
+    }
+    settingsList = await query<Setting>('SELECT * FROM settings ORDER BY key');
+    // Get counts per type
+    const counts: Record<number, number> = {};
+    for (const ct of contentTypes) {
+      const row = await queryOne<{ c: number }>('SELECT COUNT(*) as c FROM content WHERE type_id = ?', [ct.id]);
+      counts[ct.id] = row?.c ?? 0;
+    }
+    typeCounts = counts;
   }
 
   function selectType(id: number) {
@@ -55,57 +66,100 @@
   function startCreate() {
     creatingContent = true;
     editingContent = null;
-    newContentTitle = '';
-    newContentBody = '';
+    newTitle = '';
+    newBody = '';
   }
 
-  function saveNewContent() {
-    if (!newContentTitle || !selectedTypeId) return;
-    const slug = newContentTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-    run(
-      'INSERT INTO content (type_id, title, slug, body, status) VALUES (?, ?, ?, ?, ?)',
-      [selectedTypeId, newContentTitle, slug, newContentBody, 'published'],
-    );
-    creatingContent = false;
-    newContentTitle = '';
-    newContentBody = '';
-    refresh();
+  async function saveNewContent() {
+    if (!newTitle.trim()) {
+      statusMsg = 'Title is required';
+      return;
+    }
+    if (selectedTypeId === null) return;
+    try {
+      const slug = newTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+      await run(
+        'INSERT INTO content (type_id, title, slug, body, status) VALUES (?, ?, ?, ?, ?)',
+        [selectedTypeId, newTitle, slug, newBody, 'published'],
+      );
+      creatingContent = false;
+      newTitle = '';
+      newBody = '';
+      statusMsg = 'Content published!';
+      await refresh();
+    } catch (e) {
+      statusMsg = `Error: ${e instanceof Error ? e.message : String(e)}`;
+      console.error('Save error:', e);
+    }
   }
 
   function editContent(c: Content) {
-    editingContent = c;
+    editingContent = { ...c };
     creatingContent = false;
   }
 
-  function saveContent() {
+  async function saveContent() {
     if (!editingContent) return;
-    run('UPDATE content SET title = ?, body = ?, updated_at = datetime(\'now\') WHERE id = ?',
-      [editingContent.title, editingContent.body, editingContent.id]);
-    editingContent = null;
-    refresh();
+    try {
+      await run(
+        "UPDATE content SET title = ?, body = ?, updated_at = datetime('now') WHERE id = ?",
+        [editingContent.title, editingContent.body, editingContent.id],
+      );
+      editingContent = null;
+      statusMsg = 'Content saved!';
+      await refresh();
+    } catch (e) {
+      statusMsg = `Error: ${e instanceof Error ? e.message : String(e)}`;
+      console.error('Update error:', e);
+    }
   }
 
-  function deleteContent(id: number) {
+  async function deleteContent(id: number) {
     if (!confirm('Delete this content?')) return;
-    run('DELETE FROM content WHERE id = ?', [id]);
-    editingContent = null;
-    refresh();
+    try {
+      await run('DELETE FROM content WHERE id = ?', [id]);
+      editingContent = null;
+      statusMsg = 'Content deleted';
+      await refresh();
+    } catch (e) {
+      statusMsg = `Error: ${e instanceof Error ? e.message : String(e)}`;
+    }
   }
 
-  function saveSetting(key: string, value: string) {
-    run('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?', [key, value, value]);
-    refresh();
+  async function saveSetting(key: string, value: string) {
+    try {
+      await run(
+        'INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?',
+        [key, value, value],
+      );
+      statusMsg = 'Setting saved';
+      await refresh();
+    } catch (e) {
+      statusMsg = `Error: ${e instanceof Error ? e.message : String(e)}`;
+    }
   }
 
   async function handleExport() {
-    const data = await exportDB();
-    const blob = new Blob([data], { type: 'application/x-sqlite3' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'evenflow-cms.sqlite3';
-    a.click();
-    URL.revokeObjectURL(url);
+    try {
+      const data = await exportDB();
+      const blob = new Blob([data], { type: 'application/x-sqlite3' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'evenflow-cms.sqlite3';
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      statusMsg = `Export error: ${e instanceof Error ? e.message : String(e)}`;
+    }
+  }
+
+  function formatDate(d: string): string {
+    try {
+      return new Date(d + 'Z').toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+    } catch {
+      return d;
+    }
   }
 </script>
 
@@ -120,22 +174,34 @@
     <span>Loading SQLite WASM...</span>
   </div>
 {:else}
-  <div class="flex gap-2 text-xs text-slate-500 mb-4">
+  <div class="mb-4 flex items-center gap-2 text-xs text-slate-500">
     <span class="inline-flex h-2 w-2 rounded-full {opfs ? 'bg-green-500' : 'bg-yellow-500'}"></span>
     {opfs ? 'OPFS active — content saved to browser' : 'In-memory — data lost on refresh'}
   </div>
 
+  {#if statusMsg}
+    <div class="mb-4 rounded-lg bg-indigo-50 px-4 py-2 text-sm text-indigo-700">{statusMsg}</div>
+  {/if}
+
   <!-- Tabs -->
-  <div class="flex gap-1 border-b border-slate-200 mb-6">
-    <button class="px-4 py-2 text-sm font-medium {view === 'content' ? 'border-b-2 border-indigo-600 text-indigo-600' : 'text-slate-500'}" onclick={() => view = 'content'}>Content</button>
-    <button class="px-4 py-2 text-sm font-medium {view === 'types' ? 'border-b-2 border-indigo-600 text-indigo-600' : 'text-slate-500'}" onclick={() => view = 'types'}>Content Types</button>
-    <button class="px-4 py-2 text-sm font-medium {view === 'settings' ? 'border-b-2 border-indigo-600 text-indigo-600' : 'text-slate-500'}" onclick={() => view = 'settings'}>Settings</button>
+  <div class="mb-6 flex gap-1 border-b border-slate-200">
+    <button
+      class="px-4 py-2 text-sm font-medium {view === 'content' ? 'border-b-2 border-indigo-600 text-indigo-600' : 'text-slate-500'}"
+      onclick={() => view = 'content'}
+    >Content</button>
+    <button
+      class="px-4 py-2 text-sm font-medium {view === 'types' ? 'border-b-2 border-indigo-600 text-indigo-600' : 'text-slate-500'}"
+      onclick={() => view = 'types'}
+    >Content Types</button>
+    <button
+      class="px-4 py-2 text-sm font-medium {view === 'settings' ? 'border-b-2 border-indigo-600 text-indigo-600' : 'text-slate-500'}"
+      onclick={() => view = 'settings'}
+    >Settings</button>
   </div>
 
   <!-- Content View -->
   {#if view === 'content'}
     <div class="flex gap-6">
-      <!-- Content type sidebar -->
       <div class="w-48 shrink-0">
         <h3 class="mb-2 text-xs font-semibold uppercase text-slate-400">Types</h3>
         {#each contentTypes as ct}
@@ -146,19 +212,18 @@
         {/each}
       </div>
 
-      <!-- Content list / editor -->
       <div class="flex-1">
         {#if creatingContent}
           <div class="card">
-            <h2 class="text-lg font-semibold mb-4">New Content</h2>
+            <h2 class="mb-4 text-lg font-semibold">New Content</h2>
             <div class="space-y-4">
               <div>
                 <label class="label" for="new-title">Title</label>
-                <input id="new-title" class="input" bind:value={newContentTitle} placeholder="Hello World" />
+                <input id="new-title" class="input" bind:value={newTitle} placeholder="Hello World" />
               </div>
               <div>
                 <label class="label" for="new-body">Body (Markdown)</label>
-                <textarea id="new-body" class="input min-h-[200px] font-mono" bind:value={newContentBody} placeholder="# Hello World\n\nWrite something..."></textarea>
+                <textarea id="new-body" class="input min-h-[200px] font-mono" bind:value={newBody} placeholder="# Hello World&#10;&#10;Write something..."></textarea>
               </div>
               <div class="flex gap-2">
                 <button class="btn-primary" onclick={saveNewContent}>Publish</button>
@@ -168,7 +233,7 @@
           </div>
         {:else if editingContent}
           <div class="card">
-            <h2 class="text-lg font-semibold mb-4">Edit Content</h2>
+            <h2 class="mb-4 text-lg font-semibold">Edit Content</h2>
             <div class="space-y-4">
               <div>
                 <label class="label">Title</label>
@@ -186,12 +251,12 @@
             </div>
           </div>
         {:else}
-          <div class="flex items-center justify-between mb-4">
+          <div class="mb-4 flex items-center justify-between">
             <h2 class="text-lg font-semibold">Content</h2>
             <button class="btn-primary" onclick={startCreate}>+ New</button>
           </div>
           {#if contentList.length === 0}
-            <p class="text-slate-400 text-sm">No content yet. Click "+ New" to create your first post.</p>
+            <p class="text-sm text-slate-400">No content yet. Click "+ New" to create your first post.</p>
           {:else}
             <div class="space-y-2">
               {#each contentList as c}
@@ -201,7 +266,7 @@
                 >
                   <div class="flex items-center justify-between">
                     <span class="font-medium text-slate-900">{c.title}</span>
-                    <span class="text-xs text-slate-400">{c.created_at}</span>
+                    <span class="text-xs text-slate-400">{formatDate(c.created_at)}</span>
                   </div>
                   <p class="mt-1 text-sm text-slate-500 line-clamp-1">{c.body.slice(0, 100)}</p>
                 </button>
@@ -212,7 +277,6 @@
       </div>
     </div>
 
-  <!-- Content Types View -->
   {:else if view === 'types'}
     <div class="space-y-4">
       <h2 class="text-lg font-semibold">Content Types</h2>
@@ -223,26 +287,27 @@
               <p class="font-medium">{ct.name}</p>
               <p class="text-sm text-slate-500">/{ct.slug}</p>
             </div>
-            <span class="text-xs text-slate-400">
-              {queryOne<{ c: number }>('SELECT COUNT(*) as c FROM content WHERE type_id = ?', [ct.id])?.c ?? 0} entries
-            </span>
+            <span class="text-xs text-slate-400">{typeCounts[ct.id] ?? 0} entries</span>
           </div>
         </div>
       {/each}
     </div>
 
-  <!-- Settings View -->
   {:else if view === 'settings'}
     <div class="space-y-4">
       <div class="flex items-center justify-between">
         <h2 class="text-lg font-semibold">Settings</h2>
         <button class="btn-secondary" onclick={handleExport}>Export DB</button>
       </div>
-      {#each settings as s}
+      {#each settingsList as s}
         <div class="card">
           <label class="label" for="setting-{s.key}">{s.key}</label>
-          <input id="setting-{s.key}" class="input" value={s.value}
-            onblur={(e) => saveSetting(s.key, e.currentTarget.value)} />
+          <input
+            id="setting-{s.key}"
+            class="input"
+            value={s.value}
+            onblur={(e) => saveSetting(s.key, e.currentTarget.value)}
+          />
         </div>
       {/each}
     </div>

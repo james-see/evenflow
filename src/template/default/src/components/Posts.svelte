@@ -8,7 +8,7 @@
   onMount(async () => {
     try {
       await initDB();
-      posts = query(
+      posts = await query(
         `SELECT c.id, c.title, c.slug, c.body, c.status, c.created_at
          FROM content c JOIN content_types ct ON c.type_id = ct.id
          WHERE ct.slug = 'posts'
