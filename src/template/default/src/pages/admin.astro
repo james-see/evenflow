@@ -1,0 +1,9 @@
+---
+import Layout from '../layouts/Layout.astro';
+import Admin from '../components/Admin.svelte';
+---
+
+<Layout>
+  <h1 class="text-2xl font-bold mb-6">CMS Admin</h1>
+  <Admin client:only="svelte" />
+</Layout>

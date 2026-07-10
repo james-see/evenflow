@@ -1,74 +1,64 @@
 # Evenflow
 
-<p align="center">
-  <strong>Make Cloud Budgeting Smooth as Jam</strong>
-</p>
+A CLI tool that scaffolds a CMS-powered static site with SQLite WebAssembly + OPFS — deployable to GitHub Pages with zero server cost.
 
-<p align="center">
-  Free and open source cloud budget management that runs entirely in your browser.
-  Powered by SQLite WebAssembly + OPFS persistence — no server, no database, no cloud costs.
-</p>
-
-<p align="center">
-  <a href="https://github.com/james-see/evenflow/blob/main/LICENSE">AGPL-3.0 License</a>
-</p>
-
----
-
-## What is Evenflow?
-
-According to Forbes, businesses waste 30% of their cloud budget on average. Evenflow helps you track cloud spending, set budgets, and get alerts when costs spiral — all from your browser, with zero server infrastructure.
-
-**100% browser-based.** The database runs locally via SQLite compiled to WebAssembly. Data persists in the browser's Origin Private File System (OPFS). No server. No API backend. No cloud database. Just a static site.
-
-## Features
-
-- **Service Tracking** — Monitor cloud services and their monthly costs
-- **Budget Management** — Set spending limits with customizable alert thresholds
-- **Triggers & Alerts** — Automate notifications when usage crosses thresholds
-- **Segmentation** — Group services by environment (dev/prod), customer, or team
-- **Data Export/Import** — Your data is portable. Export as a .sqlite file anytime.
-- **Privacy First** — All data stays in your browser. Nothing is sent to any server.
-
-## Tech Stack
-
-- **Astro** — Static site framework (zero server cost)
-- **Svelte 5** — Interactive dashboard components
-- **Tailwind CSS** — Styling
-- **TypeScript** — Type safety throughout
-- **SQLite WASM** (`@sqlite.org/sqlite-wasm`) — Database in the browser
-- **OPFS** — Persistent storage (the database file survives across sessions)
+The site self-hosts its own database in the browser. No server. No external CMS. No database hosting. Just a static site with a full CMS backend running via SQLite WASM.
 
 ## Quick Start
 
 ```bash
-# Clone
-git clone https://github.com/james-see/evenflow.git
-cd evenflow
+# Install globally
+npm install -g evenflow
 
-# Install
+# Create a new site
+evenflow create my-site
+
+# Enter the directory and install deps
+cd my-site
 npm install
 
-# Dev server
-npm run dev
+# Start dev server
+evenflow dev
 
 # Build for production
-npm run build
+evenflow build
 
-# Preview production build
-npm run preview
+# Deploy to GitHub Pages
+evenflow deploy --repo https://github.com/yourusername/my-site
 ```
 
-## Deployment
+## How It Works
 
-Evenflow is a static site — deploy the `dist/` folder anywhere:
+1. `evenflow create` scaffolds an Astro + Svelte site with SQLite WASM built in
+2. The CMS admin panel at `/admin` lets you create content types and posts — all stored in SQLite running in your browser via WebAssembly
+3. Content persists in the browser's Origin Private File System (OPFS) — survives across sessions
+4. `evenflow build` produces a static site in `dist/`
+5. `evenflow deploy` pushes to a `gh-pages` branch on GitHub — your site goes live on GitHub Pages
 
-- **GitHub Pages** — Free, push to repo
-- **Cloudflare Pages** — Free, `npx wrangler pages deploy dist/`
-- **Netlify** — Free, `netlify deploy --prod`
-- **Self-host** — Serve `dist/` from any web server (nginx, Caddy, etc.)
+**No server. No API. No database hosting. The browser IS the backend.**
 
-No environment variables. No database connection strings. No server config.
+## Commands
+
+| Command | Description |
+|---------|-------------|
+| `evenflow create <name>` | Scaffold a new site |
+| `evenflow dev` | Start local dev server (default port 4321) |
+| `evenflow build` | Build static site to `dist/` |
+| `evenflow deploy` | Deploy to GitHub Pages via `gh-pages` branch |
+
+### Options
+
+- `--template <name>` — Template to use (default: `default`)
+- `--port <number>` — Dev server port (default: `4321`)
+- `--repo <url>` — GitHub repo URL for deploy
+
+## Tech Stack
+
+- **CLI**: Node.js + TypeScript
+- **Site Template**: Astro + Svelte 5 + Tailwind CSS
+- **CMS Backend**: `@sqlite.org/sqlite-wasm` — SQLite 3.53 compiled to WebAssembly
+- **Persistence**: OPFS (Origin Private File System) — browser-native persistent file storage
+- **Deploy**: GitHub Pages (via `gh-pages` orphan branch)
 
 ## Browser Support
 
@@ -77,8 +67,8 @@ OPFS requires a modern browser:
 - Firefox 111+
 - Safari 16.4+
 
-Falls back to in-memory mode (data lost on refresh) on older browsers.
+Falls back to in-memory mode on older browsers.
 
 ## License
 
-AGPL-3.0 — Free and open source. See [LICENSE](LICENSE).
+AGPL-3.0 — Free and open source.

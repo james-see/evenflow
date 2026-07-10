@@ -1,0 +1,22 @@
+{
+  "name": "evenflow-site",
+  "type": "module",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview"
+  },
+  "dependencies": {
+    "@astrojs/svelte": "^5.7.0",
+    "@astrojs/tailwind": "^5.1.0",
+    "@sqlite.org/sqlite-wasm": "3.53.0-build1",
+    "astro": "^4.16.0",
+    "svelte": "^5.0.0",
+    "tailwindcss": "^3.4.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0"
+  }
+}

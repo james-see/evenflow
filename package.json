@@ -1,27 +1,30 @@
 {
   "name": "evenflow",
-  "type": "module",
   "version": "0.1.0",
-  "description": "Free and open source cloud budget management — runs entirely in your browser with SQLite WASM + OPFS persistence. No server required.",
+  "description": "CLI tool that scaffolds a CMS-powered static site with SQLite WASM + OPFS — deployable to GitHub Pages with zero server cost.",
+  "type": "module",
   "license": "AGPL-3.0",
+  "bin": {
+    "evenflow": "./bin/evenflow.js"
+  },
   "scripts": {
-    "dev": "astro dev",
-    "start": "astro dev",
-    "build": "astro build",
-    "preview": "astro preview",
-    "astro": "astro",
-    "check": "astro check"
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "prepublishOnly": "npm run build"
   },
   "dependencies": {
-    "@astrojs/svelte": "^5.7.0",
-    "@astrojs/tailwind": "^5.1.0",
-    "@sqlite.org/sqlite-wasm": "3.53.0-build1",
-    "astro": "^4.16.0",
-    "svelte": "^5.0.0",
-    "tailwindcss": "^3.4.0"
+    "@sqlite.org/sqlite-wasm": "3.53.0-build1"
   },
   "devDependencies": {
-    "@astrojs/check": "^0.9.0",
-    "typescript": "^5.6.0"
-  }
+    "typescript": "^5.6.0",
+    "@types/node": "^22.0.0"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "files": [
+    "bin",
+    "dist",
+    "src/template"
+  ]
 }
