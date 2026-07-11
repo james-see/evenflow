@@ -2,6 +2,8 @@ import { copyTemplate } from '../utils/copy.js';
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { cwd } from 'node:process';
+import { saveConfig } from '../utils/config.js';
+import { ensureNodeModules } from '../utils/npm.js';
 
 export async function create(name: string | undefined, options: Record<string, string>): Promise<void> {
   if (!name) {
@@ -14,6 +16,7 @@ export async function create(name: string | undefined, options: Record<string, s
   }
 
   const template = options.template ?? 'default';
+  const repo = options.repo;
   console.log(`\n  Creating site "${name}" using "${template}" template...`);
 
   mkdirSync(target, { recursive: true });
@@ -26,14 +29,29 @@ export async function create(name: string | undefined, options: Record<string, s
   );
 
   // Write evenflow.config.json
+  const config: { name: string; template: string; createdAt: string; repo?: string } = {
+    name,
+    template,
+    createdAt: new Date().toISOString(),
+  };
+  if (repo) config.repo = repo;
   writeFileSync(
     join(target, 'evenflow.config.json'),
-    JSON.stringify({ name, template, createdAt: new Date().toISOString() }, null, 2) + '\n',
+    JSON.stringify(config, null, 2) + '\n',
   );
+
+  // Install dependencies automatically
+  ensureNodeModules(target);
 
   console.log(`\n  ✓ Site created at ${target}`);
   console.log(`\n  Next steps:`);
-  console.log(`    cd ${name}`);
-  console.log(`    npm install`);
-  console.log(`    npx evenflow dev\n`);
+  if (repo) {
+    console.log(`    cd ${name}`);
+    console.log(`    evenflow deploy`);
+  } else {
+    console.log(`    cd ${name}`);
+    console.log(`    evenflow deploy --repo https://github.com/yourusername/${name}`);
+  }
+  console.log(`\n  Default admin credentials: admin / admin123`);
+  console.log(`  Change the password immediately after first login.\n`);
 }

@@ -16,8 +16,8 @@ Smoke tests `npm test` — 5 passed ✅
 - [x] Session verification and auto-redirect to `/admin` when valid
 - [x] `/admin` route guard: redirects to `/login` if no token
 - [x] `/login` route guard: redirects to `/admin` if already logged in
-- [x] Logout button in admin that invalidates the session and clears localStorage
-- [x] Login rate limiting in the worker (5 attempts per 15-minute window)
+- [x] Logout button in admin with session invalidation
+- [x] Login rate limiting in the worker (5 attempts / 15 min)
 - [x] Root cause fixes:
   - `db.ts` auth/media helpers now send named payload fields (`username`, `password`, `userId`, `token`, `mediaId`) instead of a raw `params` array
   - Worker `media_get` now uses `mediaId` instead of colliding with request correlation `id`
@@ -47,16 +47,13 @@ Smoke tests `npm test` — 5 passed ✅
 
 - [x] Security / UX hardening
   - [x] Logout button in admin header
-  - [x] Login rate-limiting in the worker (5 attempts / 15 min window)
+  - [x] Login rate-limiting in the worker
   - [ ] Force password change UI on first login (optional, not implemented)
-  - [ ] Server-side guards impossible on static GH Pages; client-side guards are in place
 - [x] Content types & fields
-  - [x] "Content Types" admin tab now lists fields per type
+  - [x] "Content Types" admin tab lists fields per type
   - [x] Create new content types with name, slug, and configurable fields (text, markdown, image, date, boolean)
   - [x] Delete custom content types (built-in `posts` type is protected)
   - [ ] Dynamic field rendering in content edit form (structure in place; edit form still uses title/body only)
-- [x] Static site generation bridge
-  - [ ] Not implemented; public pages rely on client-side SQLite. Optional future work.
 - [x] Testing
   - [x] Added `test/evenflow.test.ts` using Node.js built-in test runner
   - [x] Tests verify root CLI build, template build, dev server startup, CLI help, and `create` scaffolding
@@ -65,21 +62,36 @@ Smoke tests `npm test` — 5 passed ✅
   - [x] Added `@sveltejs/vite-plugin-svelte` v4 to devDependencies + overrides
   - [x] Reinstalled template deps; Svelte 5 warning is gone
 
+## Phase 4: Deploy DX ✅ COMPLETE
+
+- [x] Add `src/utils/config.ts` with `loadConfig` / `saveConfig`
+- [x] `create` command accepts `--repo` and stores it in `evenflow.config.json`
+- [x] `deploy` command reads repo URL from: `--repo` > config file > git remote
+- [x] `deploy` persists repo URL to config when `--repo` is passed
+- [x] `create` runs `npm install` automatically after scaffolding
+- [x] `deploy` uses shared `ensureNodeModules` helper from `src/utils/npm.ts`
+- [x] Add `--create-repo` flag to `deploy` for `gh repo create`
+- [x] Add `--skip-build` flag to `deploy` for faster re-deploys
+- [x] Add `evenflow config list|get|set` command
+- [x] Improve CLI help with deploy-first examples
+- [x] Improve deploy error messages (missing `gh` CLI, Pages enable fallback)
+
 ## Notes
 
 - The whole app is static and runs in the browser. Auth and route guards are client-side only; this is the intended architecture for zero-server GitHub Pages deploys.
 - Media is stored as BLOB in SQLite/OPFS and rendered via object URLs. There is no public URL for images because there is no server.
 - `npm run dev` in the template uses `astro dev` under the hood and is verified to start.
-- `npm test` in the root package now runs smoke tests against the CLI and template.
+- `npm test` in the root package runs smoke tests against the CLI and template.
 
 ## Remaining optional / future work
 
-1. Force password change on first login (low priority).
+1. Force password change on first login.
 2. Render dynamic content-type fields in the content edit form instead of hardcoded title/body.
-3. Export published content to static markdown/JSON so public pages can render without client-side JS.
-4. Browser smoke tests with Playwright for the full login → upload → post → render flow.
-5. Address remaining `npm audit` vulnerabilities in template dependencies.
+3. Import exported SQLite DB in the admin UI.
+4. Export published content to static markdown/JSON so public pages can render without client-side JS.
+5. Browser smoke tests with Playwright for the full login → upload → post → render flow.
+6. Address remaining `npm audit` vulnerabilities in template dependencies.
 
 ## Next recommended task
 
-If you want to keep going, wire the content edit form to render inputs dynamically based on the selected content type's `fields` JSON. That would complete the custom content type feature end-to-end.
+Wire the content edit form to render inputs dynamically based on the selected content type's `fields` JSON. That would complete the custom content type feature end-to-end.

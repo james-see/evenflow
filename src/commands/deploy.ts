@@ -2,6 +2,8 @@ import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, rmSync, mkdirSync, cpSync, readdirSync, writeFileSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { cwd } from 'node:process';
+import { loadConfig, saveConfig } from '../utils/config.js';
+import { ensureNodeModules } from '../utils/npm.js';
 
 export async function deploy(options: Record<string, string>): Promise<void> {
   const dir = cwd();
@@ -10,21 +12,23 @@ export async function deploy(options: Record<string, string>): Promise<void> {
     throw new Error('No package.json found. Run this from a site directory.');
   }
 
-  // Read site name from evenflow.config.json
-  let siteName = 'evenflow-site';
-  const configPath = resolve(dir, 'evenflow.config.json');
-  if (existsSync(configPath)) {
-    const config = JSON.parse(readFileSync(configPath, 'utf-8'));
-    siteName = config.name ?? siteName;
-  }
+  const config = loadConfig(dir);
+  let siteName = config.name ?? 'evenflow-site';
 
-  // Determine repo URL
-  const repoUrl = options.repo ?? getGitRemote(dir);
+  // Determine repo URL: flag > config > git remote
+  let repoUrl: string | null = options.repo ?? config.repo ?? getGitRemote(dir);
+
   if (!repoUrl) {
     throw new Error(
-      'No GitHub repo URL found. Use --repo or set a git remote.\n' +
+      'No GitHub repo URL found.\n' +
+      'Pass --repo, set it with `evenflow config set repo <url>`, or configure a git remote.\n' +
       'Example: evenflow deploy --repo https://github.com/user/my-site',
     );
+  }
+
+  // Save repo URL to config for future deploys
+  if (options.repo) {
+    saveConfig({ repo: repoUrl }, dir);
   }
 
   // Extract owner/repo from URL
@@ -36,40 +40,46 @@ export async function deploy(options: Record<string, string>): Promise<void> {
 
   console.log(`\n  Deploying to GitHub Pages: ${owner}/${repo}`);
 
-  // Build the site
-  if (!existsSync(resolve(dir, 'node_modules'))) {
-    console.log('  Installing dependencies...');
-    spawnSync('npm', ['install'], { cwd: dir, stdio: 'inherit' });
+  // Ensure gh CLI is available
+  const ghCheck = spawnSync('gh', ['--version'], { stdio: 'pipe' });
+  if (ghCheck.status !== 0) {
+    throw new Error(
+      'GitHub CLI (gh) not found. Install it from https://cli.github.com/ and run `gh auth login`.',
+    );
   }
 
-  console.log('  Building...');
-  const buildResult = spawnSync('npx', ['astro', 'build'], { cwd: dir, stdio: 'inherit' });
-  if (buildResult.status !== 0) {
-    throw new Error('Build failed.');
+  // Optionally create the GitHub repo if requested
+  if (options.createRepo === 'true') {
+    console.log('  Creating GitHub repo if it does not exist...');
+    spawnSync('gh', ['repo', 'create', `${owner}/${repo}`, '--public', '--confirm'], {
+      stdio: 'inherit',
+    });
+  }
+
+  // Build the site unless --skip-build is passed
+  ensureNodeModules(dir);
+  if (options.skipBuild !== 'true') {
+    console.log('  Building...');
+    const buildResult = spawnSync('npx', ['astro', 'build'], { cwd: dir, stdio: 'inherit' });
+    if (buildResult.status !== 0) {
+      throw new Error('Build failed.');
+    }
+  } else {
+    console.log('  Skipping build (--skip-build).');
   }
 
   const distDir = resolve(dir, 'dist');
   if (!existsSync(distDir)) {
-    throw new Error('Build output not found in dist/');
-  }
-
-  // Check if gh CLI is available
-  const ghCheck = spawnSync('gh', ['--version'], { stdio: 'pipe' });
-  if (ghCheck.status !== 0) {
-    throw new Error(
-      'GitHub CLI (gh) not found. Install it from https://cli.github.com/',
-    );
+    throw new Error('Build output not found in dist/. Run `evenflow build` first.');
   }
 
   // Create or reuse a gh-pages orphan branch
-  // Strategy: clone the repo's gh-pages branch (or create orphan), copy dist/, push
   const tmpDir = resolve(dir, '.evenflow-deploy');
   rmSync(tmpDir, { recursive: true, force: true });
   mkdirSync(tmpDir, { recursive: true });
 
   console.log('  Preparing gh-pages branch...');
 
-  // Try to clone gh-pages branch; if it doesn't exist, init a fresh repo
   const cloneResult = spawnSync(
     'git',
     ['clone', '--branch', 'gh-pages', '--depth', '1', repoUrl, tmpDir],
@@ -77,12 +87,10 @@ export async function deploy(options: Record<string, string>): Promise<void> {
   );
 
   if (cloneResult.status !== 0) {
-    // Branch doesn't exist — create orphan branch
     spawnSync('git', ['init', '-b', 'gh-pages', tmpDir], { stdio: 'pipe' });
     spawnSync('git', ['remote', 'add', 'origin', repoUrl], { cwd: tmpDir, stdio: 'pipe' });
   }
 
-  // Clear the deploy dir and copy fresh build
   const entries = existsSync(tmpDir) ? readdirSync(tmpDir) : [];
   for (const entry of entries) {
     if (entry === '.git') continue;
@@ -90,11 +98,8 @@ export async function deploy(options: Record<string, string>): Promise<void> {
   }
 
   cpSync(distDir, tmpDir, { recursive: true });
-
-  // Add a .nojekyll to bypass Jekyll processing
   writeFileSync(join(tmpDir, '.nojekyll'), '');
 
-  // Commit and push
   console.log('  Pushing to gh-pages branch...');
 
   spawnSync('git', ['add', '-A'], { cwd: tmpDir, stdio: 'pipe' });
@@ -108,15 +113,16 @@ export async function deploy(options: Record<string, string>): Promise<void> {
     stdio: 'inherit',
   });
 
-  // Cleanup
   rmSync(tmpDir, { recursive: true, force: true });
 
   const pagesUrl = `https://${owner}.github.io/${repo}/`;
   console.log(`\n  ✓ Deployed! Your site will be live at:`);
   console.log(`    ${pagesUrl}`);
   console.log(`\n  (May take a minute for GitHub Pages to update.)\n`);
+  console.log('  Default admin credentials: admin / admin123');
+  console.log('  Change the password immediately after first login.\n');
 
-  // Try to enable Pages via gh CLI if not already
+  // Try to enable Pages via gh CLI
   const enableResult = spawnSync(
     'gh',
     ['api', `-X=POST`, `/repos/${owner}/${repo}/pages`, '-f', 'build_type=legacy', '-f', 'source[branch]=gh-pages'],
@@ -124,6 +130,9 @@ export async function deploy(options: Record<string, string>): Promise<void> {
   );
   if (enableResult.status === 0) {
     console.log('  GitHub Pages enabled.');
+  } else {
+    console.log('  Could not auto-enable GitHub Pages. Enable it manually at:');
+    console.log(`    https://github.com/${owner}/${repo}/settings/pages`);
   }
 }
 

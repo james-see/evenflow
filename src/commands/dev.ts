@@ -2,6 +2,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { cwd } from 'node:process';
+import { ensureNodeModules } from '../utils/npm.js';
 
 export async function dev(options: Record<string, string>): Promise<void> {
   const dir = cwd();
@@ -30,11 +31,4 @@ export async function dev(options: Record<string, string>): Promise<void> {
     });
     child.on('error', reject);
   });
-}
-
-function ensureNodeModules(dir: string): void {
-  if (!existsSync(resolve(dir, 'node_modules'))) {
-    console.log('  Installing dependencies...');
-    spawnSync('npm', ['install'], { cwd: dir, stdio: 'inherit' });
-  }
 }
